@@ -1,19 +1,20 @@
 LIBRAWDIST
 ==========
 
-librawdist - A Rust library for managing packages in the Rawssg ecosystem.
-Create, fetch, verify, install, and remove `.rawdist` archives with
-built‑in integrity checks, atomic manifest handling, and a high‑level
+librawdist - A secure, modular package manager library for the Rawssg
+ecosystem. Create, fetch, verify, install, and remove `.rawdist` archives
+with SHA‑256 integrity checks, atomic manifest handling, and a high‑level
 `PackageManager` facade.
 
-Version  : 0.4.0
+Version  : 0.5.0
 License  : GPL-3.0
 Website  : https://github.com/mroczect/librawdist
-Rust     : Edition 2021+
+Rust     : Edition 2024
 
 
 TABLE OF CONTENTS
 -----------------
+
 1.  FEATURES
 2.  INSTALLATION
     2.1 Add to Cargo.toml

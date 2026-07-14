@@ -2,7 +2,7 @@
                                CHANGELOG
 ===============================================================================
 
-[0.4.0] - 2026-07-14
+[0.5.0] - 2026-07-14
 --------------------
 Added:
   - PackageManager high-level facade for package management
@@ -19,10 +19,10 @@ Changed:
   - Enforce file type and size checks during package creation/extraction
 
 Documentation:
-  - Updated README for v0.4.0 with PackageManager and edition 2024 details
+  - Updated README for v0.5.0 with PackageManager and edition 2024 details
 
 Build & CI:
-  - Bump version to 0.4.0
+  - Bump version to 0.5.0
   - Update lockfile
   - Simplify CI workflow: remove clippy and format jobs
 

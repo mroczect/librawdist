@@ -1,0 +1,192 @@
+name: CLI Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "cli-v*"
+
+jobs:
+  build-cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: rawdist-x86_64-linux
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: rawdist-x86_64-macos
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: rawdist-aarch64-macos
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BINARY_NAME: rawdist
+      ARTIFACT_NAME: ${{ matrix.artifact }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain and target
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Smoke test
+        run: |
+          BINARY_PATH="./target/${{ matrix.target }}/release/${BINARY_NAME}"
+          output=$("$BINARY_PATH" --help)
+          if [ -z "$output" ]; then
+            echo "ERROR: Smoke test failed"
+            exit 1
+          fi
+          echo "Smoke test OK"
+
+      - name: Package binary
+        run: |
+          mkdir -p upload
+          cp "./target/${{ matrix.target }}/release/${BINARY_NAME}" upload/
+          tar -czf "$ARTIFACT_NAME.tar.gz" -C upload "$BINARY_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.tar.gz
+
+  generate-installer:
+    needs: build-cli
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create installer.sh
+        run: |
+          cat << 'EOF' > installer.sh
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+          OS="$(uname -s)"
+          ARCH="$(uname -m)"
+
+          case "$OS" in
+              Linux)
+                  case "$ARCH" in
+                      x86_64) PLATFORM="x86_64-linux" ;;
+                      *)      echo "Unsupported architecture: $ARCH"; exit 1 ;;
+                  esac
+                  ;;
+              Darwin)
+                  case "$ARCH" in
+                      x86_64) PLATFORM="x86_64-macos" ;;
+                      arm64)  PLATFORM="aarch64-macos" ;;
+                      *)      echo "Unsupported architecture: $ARCH"; exit 1 ;;
+                  esac
+                  ;;
+              *)
+                  echo "Unsupported OS: $OS"; exit 1 ;;
+          esac
+
+          RELEASE_TAG="__RELEASE_TAG__"
+          BASE_URL="https://github.com/__GITHUB_REPOSITORY__/releases/download/${RELEASE_TAG}"
+          FILENAME="rawdist-${PLATFORM}.tar.gz"
+
+          echo "Downloading $FILENAME from $BASE_URL ..."
+          curl -fsSL "${BASE_URL}/${FILENAME}" -o "/tmp/${FILENAME}"
+
+          echo "Extracting..."
+          tar -xzf "/tmp/${FILENAME}" -C /tmp/
+
+          echo "Installing rawdist to ${INSTALL_DIR} ..."
+          sudo install -m 755 /tmp/rawdist "${INSTALL_DIR}/rawdist"
+
+          if command -v rawdist >/dev/null 2>&1; then
+              echo "rawdist installed successfully!"
+              rawdist --version 2>&1 || true
+          else
+              echo "Installation failed."
+              exit 1
+          fi
+          EOF
+          chmod +x installer.sh
+
+      - name: Inject placeholders
+        run: |
+          sed -i "s|__RELEASE_TAG__|${RELEASE_TAG}|g" installer.sh
+          sed -i "s|__GITHUB_REPOSITORY__|${REPO}|g" installer.sh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: installer.sh
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/cli-v') || github.event_name == 'workflow_dispatch'
+    needs: [build-cli, generate-installer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Debug artifact structure
+        run: find . -type f | sort
+
+      - name: Collect release assets
+        run: |
+          find . -name "*.tar.gz" -exec mv {} . \;
+          find . -name "installer.sh" -exec mv {} . \;
+          ls -lh
+
+      - name: Generate SHA256 checksums
+        run: |
+          rm -f SHA256SUMS
+          for file in rawdist-*.tar.gz; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" >> SHA256SUMS
+            fi
+          done
+          echo "Checksums:"
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag: ${{ github.ref_name }}
+          artifacts: "rawdist-*.tar.gz,installer.sh,SHA256SUMS"
+          body: |
+            ## Rawdist CLI Release ${{ github.ref_name }}
+
+            Pre-built binaries for the **rawdist** package manager:
+
+            - Linux (x86_64)
+            - macOS (Intel x86_64, Apple Silicon arm64)
+
+            ### Quick install
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/installer.sh | bash
+            ```
+
+            ### SHA256 Checksums
+            See `SHA256SUMS` for integrity verification.
