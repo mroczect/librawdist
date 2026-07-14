@@ -7,6 +7,7 @@ pub trait FileSystem {
     fn write(&self, path: &Path, content: &[u8]) -> io::Result<()>;
     fn create_dir_all(&self, path: &Path) -> io::Result<()>;
     fn remove_dir_all(&self, path: &Path) -> io::Result<()>;
+    fn remove_file(&self, path: &Path) -> io::Result<()>;   // baru
     fn exists(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
     fn is_file(&self, path: &Path) -> bool;
@@ -22,6 +23,9 @@ pub struct RealFs;
 impl FileSystem for RealFs {
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
         std::fs::read_to_string(path)
+    }
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        std::fs::remove_file(path)
     }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         std::fs::read(path)
