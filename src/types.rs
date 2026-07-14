@@ -1,9 +1,10 @@
+use crate::RawdistError;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use semver;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LibrawdistConfig {
+pub struct RawdistConfig {
     pub package: PackageMeta,
     #[serde(default)]
     pub rawssg: RawssgReqs,
@@ -15,14 +16,12 @@ pub struct LibrawdistConfig {
     pub metadata: toml::value::Table,
 }
 
-impl LibrawdistConfig {
-    /// Validates the configuration, checking all fields for correctness and safety.
-    pub fn validate(&self) -> Result<(), crate::error::LibrawdistError> {
-        use crate::error::LibrawdistError;
+impl RawdistConfig {
+    pub fn validate(&self) -> Result<(), crate::error::RawdistError> {
+        use crate::error::RawdistError;
 
-        // Package name
         if self.package.name.is_empty() {
-            return Err(LibrawdistError::Validation("package name is empty".into()));
+            return Err(RawdistError::Validation("package name is empty".into()));
         }
         if !self
             .package
@@ -30,41 +29,55 @@ impl LibrawdistConfig {
             .chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
         {
-            return Err(LibrawdistError::Validation(format!(
+            return Err(RawdistError::Validation(format!(
                 "invalid package name '{}', only alphanumeric, '-' and '_' allowed",
                 self.package.name
             )));
         }
-        // Version must be valid semver
-        let _ = semver::Version::parse(&self.package.version).map_err(|e| {
-            LibrawdistError::Validation(format!("invalid version '{}': {}", self.package.version, e))
+
+        let _ = Version::parse(&self.package.version).map_err(|e| {
+            RawdistError::Validation(format!("invalid version '{}': {}", self.package.version, e))
         })?;
-        // target_dir must be relative and not contain '..'
+
         if self.install.target_dir.starts_with('/') || self.install.target_dir.contains("..") {
-            return Err(LibrawdistError::Validation(format!(
+            return Err(RawdistError::Validation(format!(
                 "target_dir '{}' must be relative and cannot contain '..'",
                 self.install.target_dir
             )));
         }
-        // At least one include pattern
+
         if self.files.include.is_empty() {
-            return Err(LibrawdistError::Validation(
+            return Err(RawdistError::Validation(
                 "no include patterns specified".into(),
             ));
         }
-        // merge_config path also safe
+
         if let Some(ref mc) = self.install.merge_config {
             if mc.starts_with('/') || mc.contains("..") {
-                return Err(LibrawdistError::Validation(
+                return Err(RawdistError::Validation(
                     "merge_config path must be relative and safe".into(),
                 ));
             }
         }
         Ok(())
     }
+
+    /// Memuat konfigurasi dari direktori yang berisi `rawdist.conf`.
+    pub fn load_from_dir(dir: &std::path::Path) -> Result<Self, RawdistError> {
+        let config_path = dir.join("rawdist.conf");
+        if !config_path.exists() {
+            return Err(RawdistError::MissingFile { path: config_path });
+        }
+        let content = std::fs::read_to_string(&config_path)?;
+        let config: Self = toml::from_str(&content).map_err(|e| RawdistError::TomlParse {
+            path: config_path,
+            source: e,
+        })?;
+        config.validate()?;
+        Ok(config)
+    }
 }
 
-/// Metadata about the package.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageMeta {
     pub name: String,
@@ -80,7 +93,6 @@ pub struct PackageMeta {
     pub release_date: Option<String>,
 }
 
-/// Requirements for rawssg compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawssgReqs {
     #[serde(default)]
@@ -105,7 +117,6 @@ fn default_package_type() -> String {
     "theme".to_string()
 }
 
-/// File inclusion/exclusion patterns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePatterns {
     #[serde(default = "default_include")]
@@ -127,7 +138,6 @@ fn default_include() -> Vec<String> {
     vec!["**/*".to_string()]
 }
 
-/// Installation configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallConfig {
     #[serde(default = "default_target_dir")]
@@ -149,7 +159,6 @@ fn default_target_dir() -> String {
     "themes/{{ package.name }}".to_string()
 }
 
-/// An entry in the local manifest tracking installed packages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledPackage {
     pub name: String,
@@ -158,7 +167,6 @@ pub struct InstalledPackage {
     pub config_merged: Option<String>,
 }
 
-/// The manifest file (`rawssg-packages.toml`) structure.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Manifest {
     #[serde(default)]

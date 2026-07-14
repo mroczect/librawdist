@@ -1,7 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Abstract file system operations for testability.
 pub trait FileSystem {
     fn read_to_string(&self, path: &Path) -> io::Result<String>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
@@ -18,7 +17,6 @@ pub trait FileSystem {
     fn walk_dir(&self, root: &Path) -> io::Result<Vec<PathBuf>>;
 }
 
-/// Real filesystem implementation.
 pub struct RealFs;
 
 impl FileSystem for RealFs {

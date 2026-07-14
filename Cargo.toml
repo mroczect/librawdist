@@ -1,10 +1,15 @@
 [package]
 name = "librawdist"
-version = "0.1.0"
-edition = "2024"
+version = "0.2.0"
+edition = "2021"
+description = "library package manager for the rawssg ecosystem"
+license = "GPL-3.0"
+repository = "https://github.com/mroczect/librawdist"
+
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
-clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"
 thiserror = "2"
@@ -14,14 +19,10 @@ flate2 = "1.1"
 sha2 = "0.11"
 hex = "0.4"
 walkdir = "2.5"
-chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3"
 log = "0.4"
-env_logger = "0.11"
 semver = "1.0"
 fs2 = "0.4"
-glob = "0.3.3"
-
-
-[lib]
-path = "src/lib.rs"
+glob = "0.3"
+ureq = "3"
+dirs-next = "2.0"
