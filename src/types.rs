@@ -1,16 +1,25 @@
-use crate::RawdistError;
+use crate::error::RawdistError;
+use crate::fs::FileSystem;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+pub const CURRENT_EDITION: &str = "1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawdistConfig {
+    #[serde(default = "default_edition")]
+    pub edition: String,
     pub package: PackageMeta,
     pub rawssg: RawssgReqs,
     pub files: FilePatterns,
     pub install: InstallConfig,
     #[serde(default)]
     pub metadata: toml::value::Table,
+}
+
+fn default_edition() -> String {
+    CURRENT_EDITION.to_string()
 }
 
 impl RawdistConfig {
@@ -21,6 +30,7 @@ impl RawdistConfig {
         install: InstallConfig,
     ) -> Self {
         Self {
+            edition: default_edition(),
             package,
             rawssg,
             files,
@@ -29,9 +39,7 @@ impl RawdistConfig {
         }
     }
 
-    pub fn validate(&self) -> Result<(), crate::error::RawdistError> {
-        use crate::error::RawdistError;
-
+    pub fn validate(&self) -> Result<(), RawdistError> {
         if self.package.name.is_empty() {
             return Err(RawdistError::Validation("package name is empty".into()));
         }
@@ -46,7 +54,6 @@ impl RawdistConfig {
                 self.package.name
             )));
         }
-
         let _ = Version::parse(&self.package.version).map_err(|e| {
             RawdistError::Validation(format!("invalid version '{}': {}", self.package.version, e))
         })?;
@@ -71,10 +78,18 @@ impl RawdistConfig {
                 ));
             }
         }
+
+        if self.edition != CURRENT_EDITION {
+            return Err(RawdistError::Validation(format!(
+                "unsupported edition '{}', expected '{}'",
+                self.edition, CURRENT_EDITION
+            )));
+        }
+
         Ok(())
     }
 
-    pub fn load_from_dir(fs: &dyn crate::fs::FileSystem, dir: &std::path::Path) -> Result<Self, RawdistError> {
+    pub fn load_from_dir(fs: &dyn FileSystem, dir: &Path) -> Result<Self, RawdistError> {
         let config_path = dir.join("rawdist.conf");
         if !fs.exists(&config_path) {
             return Err(RawdistError::MissingFile { path: config_path });
@@ -87,9 +102,15 @@ impl RawdistConfig {
         config.validate()?;
         Ok(config)
     }
+
+    pub fn resolve_target_dir(&self) -> String {
+        self.install
+            .target_dir
+            .replace("{{ package.name }}", &self.package.name)
+            .replace("{{ package.version }}", &self.package.version)
+    }
 }
 
-// PackageMeta tidak berubah
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageMeta {
     pub name: String,
@@ -109,19 +130,19 @@ pub struct PackageMeta {
 pub struct RawssgReqs {
     pub min_version: Option<String>,
     pub max_version: Option<String>,
-    pub r#type: String,   // wajib diisi, tidak ada default
+    pub r#type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePatterns {
-    pub include: Vec<String>,   // wajib, tidak ada default
+    pub include: Vec<String>,
     #[serde(default)]
     pub exclude: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallConfig {
-    pub target_dir: String,     // wajib
+    pub target_dir: String,
     #[serde(default)]
     pub merge_config: Option<String>,
 }

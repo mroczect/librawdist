@@ -13,10 +13,11 @@ impl HttpClient for UreqClient {
         let response = ureq::get(url)
             .call()
             .map_err(|e| RawdistError::Network(e.to_string()))?;
-        response
+        let body = response
             .into_body()
             .read_to_vec()
-            .map_err(|e| RawdistError::Network(e.to_string()))
+            .map_err(|e| RawdistError::Network(e.to_string()))?;
+        Ok(body)
     }
 }
 
@@ -31,7 +32,8 @@ pub fn fetch_package(
     let dest = if let Some(p) = dest_path {
         p.to_path_buf()
     } else {
-        let mut cache = dirs_next::cache_dir().unwrap_or_else(|| PathBuf::from("."));
+        let mut cache =
+            dirs_next::cache_dir().unwrap_or_else(|| PathBuf::from("/tmp/librawdist-cache"));
         cache.push("librawdist");
         cache.push("cache");
         fs.create_dir_all(&cache)?;

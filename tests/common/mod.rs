@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use librawdist::error::RawdistError;
+use librawdist::fetch::HttpClient;
 use librawdist::fs::FileSystem;
 use std::collections::HashMap;
 use std::io;
@@ -13,11 +15,14 @@ pub struct MockFs {
     pub walk_error: Option<io::Error>,
     pub create_dir_error: Option<io::Error>,
     pub remove_dir_error: Option<io::Error>,
+    pub remove_file_error: Option<io::Error>,
     pub copy_error: Option<io::Error>,
     pub rename_error: Option<io::Error>,
     pub canonicalize_error: Option<io::Error>,
     pub read_dir_entries: Vec<PathBuf>,
     pub read_dir_error: Option<io::Error>,
+    pub metadata_error: Option<io::Error>,
+    pub metadata_size: u64,
 }
 
 impl MockFs {
@@ -30,24 +35,25 @@ impl MockFs {
             walk_error: None,
             create_dir_error: None,
             remove_dir_error: None,
+            remove_file_error: None,
             copy_error: None,
             rename_error: None,
             canonicalize_error: None,
             read_dir_entries: vec![],
             read_dir_error: None,
+            metadata_error: None,
+            metadata_size: 0,
         }
     }
 
     pub fn add_file(&mut self, path: &Path, content: &[u8]) {
         self.files.insert(path.to_path_buf(), content.to_vec());
+        self.metadata_size = content.len() as u64;
     }
 }
 
 impl FileSystem for MockFs {
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
-        if let Some(err) = &self.read_error {
-            return Err(io::Error::new(err.kind(), err.to_string()));
-        }
         self.read(path)
             .map(|v| String::from_utf8_lossy(&v).into_owned())
     }
@@ -80,6 +86,14 @@ impl FileSystem for MockFs {
 
     fn remove_dir_all(&self, _path: &Path) -> io::Result<()> {
         if let Some(err) = &self.remove_dir_error {
+            Err(io::Error::new(err.kind(), err.to_string()))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn remove_file(&self, _path: &Path) -> io::Result<()> {
+        if let Some(err) = &self.remove_file_error {
             Err(io::Error::new(err.kind(), err.to_string()))
         } else {
             Ok(())
@@ -138,5 +152,27 @@ impl FileSystem for MockFs {
             return Err(io::Error::new(err.kind(), err.to_string()));
         }
         Ok(self.files.keys().cloned().collect())
+    }
+
+    fn metadata(&self, _path: &Path) -> io::Result<std::fs::Metadata> {
+        if let Some(err) = &self.metadata_error {
+            return Err(io::Error::new(err.kind(), err.to_string()));
+        }
+        let tmp = tempfile::tempfile().unwrap();
+        tmp.set_len(self.metadata_size).unwrap();
+        tmp.metadata()
+    }
+}
+
+pub struct MockHttp {
+    pub response: Result<Vec<u8>, String>,
+}
+
+impl HttpClient for MockHttp {
+    fn get(&self, _url: &str) -> Result<Vec<u8>, RawdistError> {
+        match &self.response {
+            Ok(data) => Ok(data.clone()),
+            Err(msg) => Err(RawdistError::Network(msg.clone())),
+        }
     }
 }

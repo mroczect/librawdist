@@ -29,11 +29,7 @@ pub fn install_package(
     let target_dir = if let Some(t) = target_override {
         t.to_path_buf()
     } else {
-        let resolved = config
-            .install
-            .target_dir
-            .replace("{{ package.name }}", &config.package.name);
-        PathBuf::from(resolved)
+        PathBuf::from(config.resolve_target_dir())
     };
 
     if fs.exists(&target_dir) {
@@ -46,9 +42,7 @@ pub fn install_package(
     package::move_extracted(fs, &extracted, &target_dir)?;
 
     let mut manifest = manifest::load_manifest(fs, manifest_path)?;
-    manifest
-        .packages
-        .retain(|p| p.name != config.package.name);
+    manifest.packages.retain(|p| p.name != config.package.name);
     manifest.packages.push(InstalledPackage {
         name: config.package.name.clone(),
         version: config.package.version.clone(),

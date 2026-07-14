@@ -2,12 +2,14 @@ use crate::checksum;
 use crate::error::RawdistError;
 use crate::fs::FileSystem;
 use crate::types::RawdistConfig;
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use flate2::Compression;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use tar::{Archive, Builder};
+use tar::{Archive, Builder, EntryType};
+
+const MAX_ARCHIVE_SIZE: u64 = 500 * 1024 * 1024;
 
 pub fn create_package(
     fs: &dyn FileSystem,
@@ -46,10 +48,16 @@ pub fn create_package(
     Ok(())
 }
 
-pub fn extract_to_temp(
-    fs: &dyn FileSystem,
-    archive_path: &Path,
-) -> Result<PathBuf, RawdistError> {
+pub fn extract_to_temp(fs: &dyn FileSystem, archive_path: &Path) -> Result<PathBuf, RawdistError> {
+    let metadata = fs.metadata(archive_path)?;
+    let size = metadata.len();
+    if size > MAX_ARCHIVE_SIZE {
+        return Err(RawdistError::ArchiveTooLarge {
+            size,
+            max: MAX_ARCHIVE_SIZE,
+        });
+    }
+
     let data = fs.read(archive_path)?;
     let cursor = Cursor::new(data);
     let dec = GzDecoder::new(cursor);
@@ -68,6 +76,14 @@ pub fn extract_to_temp(
             .any(|c| c == std::path::Component::ParentDir)
         {
             return Err(RawdistError::PathTraversal(entry_path));
+        }
+
+        let entry_type = entry.header().entry_type();
+        match entry_type {
+            EntryType::Regular | EntryType::Directory => {}
+            _ => {
+                return Err(RawdistError::PathTraversal(entry_path));
+            }
         }
 
         let joined = dest.join(&entry_path);
@@ -99,24 +115,17 @@ pub fn extract_to_temp(
         }
         let actual_hash = checksum::hash_file(fs, &actual_path)?;
         if &actual_hash != expected_hash {
-            return Err(RawdistError::ChecksumMismatch {
-                path: actual_path,
-            });
+            return Err(RawdistError::ChecksumMismatch { path: actual_path });
         }
     }
 
     fs.remove_file(&checksum_file)?;
-    std::fs::remove_file(&checksum_file)?;
 
     let persistent = temp_dir.keep();
     Ok(persistent)
 }
 
-pub fn move_extracted(
-    fs: &dyn FileSystem,
-    src: &Path,
-    target: &Path,
-) -> Result<(), RawdistError> {
+pub fn move_extracted(fs: &dyn FileSystem, src: &Path, target: &Path) -> Result<(), RawdistError> {
     if fs.exists(target) {
         return Err(RawdistError::Config(format!(
             "Target already exists: {}",

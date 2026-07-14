@@ -1,6 +1,6 @@
 [package]
 name = "librawdist"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 description = "library package manager for the rawssg ecosystem"
 license = "GPL-3.0"

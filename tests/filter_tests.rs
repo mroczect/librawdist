@@ -2,47 +2,64 @@ use librawdist::filter;
 use std::path::Path;
 
 #[test]
-fn test_is_included_match() {
+fn is_included_match() {
     assert!(filter::is_included(
         Path::new("test.css"),
-        &vec!["*.css".to_string()],
+        &["*.css".to_string()],
         &[]
     ));
 }
 
 #[test]
-fn test_is_included_exclude_overrides() {
+fn is_included_exclude_overrides_include() {
     assert!(!filter::is_included(
         Path::new("test.css"),
-        &vec!["*.css".to_string()],
-        &vec!["*.css".to_string()]
+        &["*.css".to_string()],
+        &["*.css".to_string()]
     ));
 }
 
 #[test]
-fn test_is_included_no_match() {
+fn is_included_no_match() {
     assert!(!filter::is_included(
         Path::new("test.js"),
-        &vec!["*.css".to_string()],
+        &["*.css".to_string()],
         &[]
     ));
 }
 
 #[test]
-fn test_is_included_invalid_pattern_ignored() {
-    // Pattern invalid tidak mempengaruhi
+fn is_included_invalid_pattern_ignored() {
     assert!(!filter::is_included(
         Path::new("file.txt"),
-        &vec!["[invalid".to_string()],
+        &["[invalid".to_string()],
         &[]
     ));
 }
 
 #[test]
-fn test_is_included_multiple_includes() {
+fn is_included_multiple_includes() {
     assert!(filter::is_included(
         Path::new("file.txt"),
-        &vec!["*.txt".to_string(), "*.md".to_string()],
+        &["*.txt".to_string(), "*.md".to_string()],
         &[]
+    ));
+}
+
+#[test]
+fn is_included_subdirectory_pattern() {
+    assert!(filter::is_included(
+        Path::new("subdir/file.css"),
+        &["**/*.css".to_string()],
+        &[]
+    ));
+}
+
+#[test]
+fn is_included_exclude_unmatched() {
+    assert!(filter::is_included(
+        Path::new("file.css"),
+        &["*.css".to_string()],
+        &["*.js".to_string()]
     ));
 }

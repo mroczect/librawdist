@@ -65,4 +65,8 @@ pub enum RawdistError {
     #[error("Network error: {0}")]
     #[diagnostic(code(librawdist::network))]
     Network(String),
+
+    #[error("Archive is too large: {size} bytes exceeds maximum {max} bytes")]
+    #[diagnostic(code(librawdist::archive_too_large))]
+    ArchiveTooLarge { size: u64, max: u64 },
 }

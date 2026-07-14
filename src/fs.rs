@@ -7,7 +7,7 @@ pub trait FileSystem {
     fn write(&self, path: &Path, content: &[u8]) -> io::Result<()>;
     fn create_dir_all(&self, path: &Path) -> io::Result<()>;
     fn remove_dir_all(&self, path: &Path) -> io::Result<()>;
-    fn remove_file(&self, path: &Path) -> io::Result<()>;   // baru
+    fn remove_file(&self, path: &Path) -> io::Result<()>;
     fn exists(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
     fn is_file(&self, path: &Path) -> bool;
@@ -16,6 +16,8 @@ pub trait FileSystem {
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
     fn walk_dir(&self, root: &Path) -> io::Result<Vec<PathBuf>>;
+    /// Metadata file (untuk pengecekan ukuran arsip)
+    fn metadata(&self, path: &Path) -> io::Result<std::fs::Metadata>;
 }
 
 pub struct RealFs;
@@ -23,9 +25,6 @@ pub struct RealFs;
 impl FileSystem for RealFs {
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
         std::fs::read_to_string(path)
-    }
-    fn remove_file(&self, path: &Path) -> io::Result<()> {
-        std::fs::remove_file(path)
     }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         std::fs::read(path)
@@ -41,6 +40,9 @@ impl FileSystem for RealFs {
     }
     fn remove_dir_all(&self, path: &Path) -> io::Result<()> {
         std::fs::remove_dir_all(path)
+    }
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        std::fs::remove_file(path)
     }
     fn exists(&self, path: &Path) -> bool {
         path.exists()
@@ -76,5 +78,8 @@ impl FileSystem for RealFs {
             }
         }
         Ok(files)
+    }
+    fn metadata(&self, path: &Path) -> io::Result<std::fs::Metadata> {
+        path.metadata()
     }
 }

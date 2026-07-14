@@ -15,9 +15,13 @@ pub fn load_manifest(fs: &dyn FileSystem, path: &Path) -> Result<Manifest, Rawdi
     Ok(manifest)
 }
 
-pub fn save_manifest(fs: &dyn FileSystem, path: &Path, manifest: &Manifest) -> Result<(), RawdistError> {
-    let content = toml::to_string_pretty(manifest)
-        .map_err(|e| RawdistError::Config(e.to_string()))?;
+pub fn save_manifest(
+    fs: &dyn FileSystem,
+    path: &Path,
+    manifest: &Manifest,
+) -> Result<(), RawdistError> {
+    let content =
+        toml::to_string_pretty(manifest).map_err(|e| RawdistError::Config(e.to_string()))?;
     fs.write(path, content.as_bytes())?;
     Ok(())
 }

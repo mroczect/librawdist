@@ -1,9 +1,11 @@
-use librawdist::fs::RealFs;
-use librawdist::fs::FileSystem;
+mod common;
+use librawdist::fs::{FileSystem, RealFs};
+use std::io::ErrorKind;
+use std::path::Path;
 use tempfile::TempDir;
 
 #[test]
-fn test_real_fs_read_write() {
+fn real_fs_read_write() {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("test.txt");
     let fs = RealFs;
@@ -13,7 +15,7 @@ fn test_real_fs_read_write() {
 }
 
 #[test]
-fn test_real_fs_create_dir_all() {
+fn real_fs_create_dir_all() {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path().join("a/b/c");
     RealFs.create_dir_all(&dir).unwrap();
@@ -21,28 +23,34 @@ fn test_real_fs_create_dir_all() {
 }
 
 #[test]
-fn test_real_fs_remove_dir_all() {
+fn real_fs_remove_dir_all() {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path().join("todel");
     RealFs.create_dir_all(&dir).unwrap();
-    assert!(dir.exists());
     RealFs.remove_dir_all(&dir).unwrap();
     assert!(!dir.exists());
 }
 
 #[test]
-fn test_real_fs_read_dir() {
+fn real_fs_remove_file() {
     let tmp = TempDir::new().unwrap();
-    let f1 = tmp.path().join("a");
-    let f2 = tmp.path().join("b");
-    std::fs::write(&f1, b"x").unwrap();
-    std::fs::write(&f2, b"x").unwrap();
+    let file = tmp.path().join("file.txt");
+    std::fs::write(&file, b"data").unwrap();
+    RealFs.remove_file(&file).unwrap();
+    assert!(!file.exists());
+}
+
+#[test]
+fn real_fs_read_dir() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(tmp.path().join("a"), b"").unwrap();
+    std::fs::write(tmp.path().join("b"), b"").unwrap();
     let entries = RealFs.read_dir(tmp.path()).unwrap();
     assert_eq!(entries.len(), 2);
 }
 
 #[test]
-fn test_real_fs_copy_file() {
+fn real_fs_copy_file() {
     let tmp = TempDir::new().unwrap();
     let src = tmp.path().join("src");
     let dst = tmp.path().join("dst");
@@ -52,7 +60,7 @@ fn test_real_fs_copy_file() {
 }
 
 #[test]
-fn test_real_fs_rename() {
+fn real_fs_rename() {
     let tmp = TempDir::new().unwrap();
     let src = tmp.path().join("old");
     let dst = tmp.path().join("new");
@@ -63,7 +71,7 @@ fn test_real_fs_rename() {
 }
 
 #[test]
-fn test_real_fs_canonicalize() {
+fn real_fs_canonicalize() {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("file");
     std::fs::write(&path, b"").unwrap();
@@ -72,7 +80,7 @@ fn test_real_fs_canonicalize() {
 }
 
 #[test]
-fn test_real_fs_walk_dir() {
+fn real_fs_walk_dir() {
     let tmp = TempDir::new().unwrap();
     std::fs::write(tmp.path().join("a.txt"), b"").unwrap();
     std::fs::create_dir(tmp.path().join("sub")).unwrap();
@@ -84,4 +92,55 @@ fn test_real_fs_walk_dir() {
         .collect();
     assert!(names.contains(&"a.txt"));
     assert!(names.contains(&"b.txt"));
+}
+
+#[test]
+fn real_fs_read_nonexistent() {
+    let err = RealFs
+        .read(Path::new("/tmp/nonexistent_xyz123"))
+        .unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::NotFound);
+}
+
+#[test]
+fn real_fs_read_dir_not_a_directory() {
+    let tmp = TempDir::new().unwrap();
+    let file = tmp.path().join("file.txt");
+    std::fs::write(&file, b"data").unwrap();
+    let err = RealFs.read_dir(&file).unwrap_err();
+    assert!(err.kind() == ErrorKind::NotADirectory || err.kind() == ErrorKind::Other);
+}
+
+#[test]
+fn real_fs_remove_dir_nonexistent() {
+    let err = RealFs
+        .remove_dir_all(Path::new("/tmp/nonexistent_xyz123"))
+        .unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::NotFound);
+}
+
+#[test]
+fn real_fs_copy_file_nonexistent_source() {
+    let tmp = TempDir::new().unwrap();
+    let dst = tmp.path().join("dst");
+    let err = RealFs
+        .copy_file(Path::new("/tmp/nonexistent_src"), &dst)
+        .unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::NotFound);
+}
+
+#[test]
+fn mock_fs_write_error() {
+    let mut mock = common::MockFs::new();
+    mock.write_error = Some(std::io::Error::new(ErrorKind::PermissionDenied, "denied"));
+    let err = mock.write(Path::new("/test"), b"x").unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn mock_fs_remove_file_error() {
+    let mut mock = common::MockFs::new();
+    mock.remove_file_error = Some(std::io::Error::new(ErrorKind::PermissionDenied, "denied"));
+    let err = mock.remove_file(Path::new("/test")).unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
 }
