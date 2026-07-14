@@ -1,14 +1,16 @@
 use crate::error::RawdistError;
+use crate::fs::FileSystem;
 use crate::types::{InstalledPackage, RawdistConfig};
-use crate::{fs, manifest, package};
+use crate::{manifest, package};
 use std::path::{Path, PathBuf};
 
 pub fn install_package(
+    fs: &dyn FileSystem,
     archive_path: &Path,
     target_override: Option<&Path>,
     manifest_path: &Path,
 ) -> Result<(), RawdistError> {
-    if !archive_path.exists() {
+    if !fs.exists(archive_path) {
         return Err(RawdistError::InvalidInput(format!(
             "Archive not found: {}",
             archive_path.display()
@@ -21,9 +23,8 @@ pub fn install_package(
         return Err(RawdistError::InvalidInput("Expected .rawdist file".into()));
     }
 
-    let fs = fs::RealFs;
-    let extracted = package::extract_to_temp(&fs, archive_path)?;
-    let config = RawdistConfig::load_from_dir(&extracted)?;
+    let extracted = package::extract_to_temp(fs, archive_path)?;
+    let config = RawdistConfig::load_from_dir(fs, &extracted)?;
 
     let target_dir = if let Some(t) = target_override {
         t.to_path_buf()
@@ -35,24 +36,26 @@ pub fn install_package(
         PathBuf::from(resolved)
     };
 
-    if target_dir.exists() {
+    if fs.exists(&target_dir) {
         return Err(RawdistError::Config(format!(
             "Target directory '{}' already exists. Remove it first or use an override.",
             target_dir.display()
         )));
     }
 
-    package::move_extracted(&extracted, &target_dir)?;
+    package::move_extracted(fs, &extracted, &target_dir)?;
 
-    let mut manifest = manifest::load_manifest(manifest_path)?;
-    manifest.packages.retain(|p| p.name != config.package.name);
+    let mut manifest = manifest::load_manifest(fs, manifest_path)?;
+    manifest
+        .packages
+        .retain(|p| p.name != config.package.name);
     manifest.packages.push(InstalledPackage {
         name: config.package.name.clone(),
         version: config.package.version.clone(),
-        install_path: target_dir.canonicalize()?,
+        install_path: fs.canonicalize(&target_dir)?,
         config_merged: config.install.merge_config.clone(),
     });
-    manifest::save_manifest(manifest_path, &manifest)?;
+    manifest::save_manifest(fs, manifest_path, &manifest)?;
 
     log::info!(
         "Package '{}' installed to {}",
@@ -62,8 +65,12 @@ pub fn install_package(
     Ok(())
 }
 
-pub fn remove_package(package_name: &str, manifest_path: &Path) -> Result<(), RawdistError> {
-    let mut manifest = manifest::load_manifest(manifest_path)?;
+pub fn remove_package(
+    fs: &dyn FileSystem,
+    package_name: &str,
+    manifest_path: &Path,
+) -> Result<(), RawdistError> {
+    let mut manifest = manifest::load_manifest(fs, manifest_path)?;
     let pos = manifest
         .packages
         .iter()
@@ -71,8 +78,8 @@ pub fn remove_package(package_name: &str, manifest_path: &Path) -> Result<(), Ra
         .ok_or_else(|| RawdistError::NotInstalled(package_name.to_string()))?;
     let pkg = manifest.packages.remove(pos);
 
-    if pkg.install_path.exists() {
-        std::fs::remove_dir_all(&pkg.install_path)?;
+    if fs.exists(&pkg.install_path) {
+        fs.remove_dir_all(&pkg.install_path)?;
         log::info!("Removed directory: {}", pkg.install_path.display());
     } else {
         log::warn!(
@@ -81,7 +88,7 @@ pub fn remove_package(package_name: &str, manifest_path: &Path) -> Result<(), Ra
         );
     }
 
-    manifest::save_manifest(manifest_path, &manifest)?;
+    manifest::save_manifest(fs, manifest_path, &manifest)?;
     log::info!("Package '{}' removed.", package_name);
     Ok(())
 }

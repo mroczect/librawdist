@@ -1,4 +1,5 @@
 use crate::error::RawdistError;
+use crate::fs::FileSystem;
 use std::path::{Path, PathBuf};
 
 pub trait HttpClient {
@@ -20,6 +21,7 @@ impl HttpClient for UreqClient {
 }
 
 pub fn fetch_package(
+    fs: &dyn FileSystem,
     client: &dyn HttpClient,
     url: &str,
     dest_path: Option<&Path>,
@@ -32,13 +34,12 @@ pub fn fetch_package(
         let mut cache = dirs_next::cache_dir().unwrap_or_else(|| PathBuf::from("."));
         cache.push("librawdist");
         cache.push("cache");
-        std::fs::create_dir_all(&cache)?;
+        fs.create_dir_all(&cache)?;
         let filename = url.split('/').last().unwrap_or("package.rawdist");
         cache.join(filename)
     };
 
-    std::fs::write(&dest, &body)?;
+    fs.write(&dest, &body)?;
     log::info!("Fetched package to {}", dest.display());
     Ok(dest)
 }
-

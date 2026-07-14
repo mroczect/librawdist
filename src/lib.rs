@@ -14,6 +14,8 @@ pub use error::RawdistError;
 pub use fetch::fetch_package;
 pub use fetch::HttpClient;
 pub use fetch::UreqClient;
+pub use fs::FileSystem;
+pub use fs::RealFs;
 pub use install::{install_package, remove_package};
 pub use package::{create_package, extract_to_temp, move_extracted};
 pub use types::RawdistConfig;
