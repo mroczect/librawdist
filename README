@@ -1,5 +1,592 @@
-librawdist
-----------
+LIBRAWDIST
+==========
 
-This Project Is Under Development!!
-====================================
+librawdist - A Rust library for managing packages in the Rawssg ecosystem.
+Create, fetch, verify, install, and remove `.rawdist` archives with
+built‑in integrity checks and atomic manifest handling.
+
+Version  : 0.2.0
+License  : GPL-3.0
+Website  : https://github.com/mroczect/librawdist
+Rust     : Edition 2021
+
+
+TABLE OF CONTENTS
+-----------------
+1.  FEATURES
+2.  INSTALLATION
+    2.1 Add to Cargo.toml
+    2.2 Build from source
+3.  QUICK START
+4.  LIBRARY USAGE (RUST API)
+    4.1 Modules overview
+    4.2 Key types
+        4.2.1 RawdistConfig
+        4.2.2 PackageMeta
+        4.2.3 RawssgReqs
+        4.2.4 FilePatterns
+        4.2.5 InstallConfig
+        4.2.6 InstalledPackage
+        4.2.7 Manifest
+        4.2.8 LockFile / LockEntry
+        4.2.9 RawdistError
+        4.2.10 FileSystem (trait)
+    4.3 Public functions
+        4.3.1 fetch_package
+        4.3.2 create_package
+        4.3.3 extract_to_temp
+        4.3.4 move_extracted
+        4.3.5 install_package
+        4.3.6 remove_package
+        4.3.7 verify_package
+    4.4 Checksum utilities
+    4.5 Filter utilities
+    4.6 Integration example
+5.  CONFIGURATION (rawdist.conf)
+    5.1 Format
+    5.2 Fields detail
+    5.3 Validation rules
+6.  PACKAGE FORMAT (.rawdist)
+    6.1 Internal structure
+    6.2 checksums.sha256 format
+    6.3 Security: path traversal prevention
+7.  MANIFEST AND LOCK FILES
+    7.1 Manifest (installed packages)
+    7.2 Lock file (pinned versions)
+8.  ERROR HANDLING
+9.  EXAMPLES
+    9.1 Building a package
+    9.2 Installing a package
+    9.3 Removing a package
+    9.4 Verifying a package
+10. CONTRIBUTING
+11. LICENSE
+
+
+1. FEATURES
+-----------
+
+- Create `.rawdist` packages from a directory with a `rawdist.conf`
+- Automatic SHA256 checksums generation and verification
+- Fetch packages from URLs with local caching
+- Install packages to configurable target directories (template support)
+- Remove packages and clean up install directories
+- Manifest file to track installed packages
+- Lock file for reproducible resolution (name/version/source/checksum)
+- File filtering with glob patterns (include/exclude)
+- Abstract filesystem trait for testability (mock filesystem)
+- Rich error types with diagnostic codes and help texts (via `miette`)
+- Atomic file writes (tmp + rename) with file locking (via `fs2`)
+- Path traversal protection during extraction
+- Validation of `rawdist.conf` according to strict rules
+- Designed as a library – easy to build a CLI on top
+
+
+2. INSTALLATION
+---------------
+
+2.1 Add to Cargo.toml
+    Since the crate is not published on crates.io yet, add it as a git
+    dependency:
+
+        [dependencies]
+        librawdist = { git = "https://github.com/mroczect/librawdist.git" }
+
+    Or specify a tag:
+
+        librawdist = { git = "https://github.com/mroczect/librawdist.git", tag = "v0.2.0" }
+
+2.2 Build from source
+    Requirements: Rust (edition 2021+), Git.
+
+        git clone https://github.com/mroczect/librawdist.git
+        cd librawdist
+        cargo build --release
+
+    The library will be compiled and can be used by other projects via
+    path dependency:
+
+        [dependencies]
+        librawdist = { path = "../librawdist" }
+
+
+3. QUICK START
+--------------
+
+    use librawdist::{
+        create_package,
+        RawdistConfig,
+        fs::RealFs,
+    };
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let fs = RealFs;
+        let config = RawdistConfig::load_from_dir(std::path::Path::new("my_theme"))?;
+        create_package(
+            &fs,
+            std::path::Path::new("my_theme"),
+            std::path::Path::new("my_theme.rawdist"),
+            &config,
+        )?;
+        println!("Package created.");
+        Ok(())
+    }
+
+    For more detailed usage, see section 4.6 and 9.
+
+
+4. LIBRARY USAGE (RUST API)
+----------------------------
+
+4.1 Modules overview
+    The library exposes these public modules:
+
+        librawdist::checksum   – hash generation, formatting, parsing
+        librawdist::error      – error types (RawdistError)
+        librawdist::fetch      – download .rawdist from URL
+        librawdist::filter     – glob include/exclude logic
+        librawdist::fs         – filesystem trait and RealFs implementation
+        librawdist::install    – install and remove packages
+        librawdist::lock       – lock file structures and operations
+        librawdist::manifest   – manifest load/save
+        librawdist::package    – create, extract, and move packages
+        librawdist::types      – configuration and manifest data types
+        librawdist::verify     – verify a package's integrity
+
+    Re‑exported items (convenience):
+
+        - librawdist::RawdistError
+        - librawdist::fetch_package
+        - librawdist::install_package
+        - librawdist::remove_package
+        - librawdist::create_package
+        - librawdist::extract_to_temp
+        - librawdist::move_extracted
+        - librawdist::verify_package
+        - librawdist::RawdistConfig
+
+4.2 Key types
+
+    4.2.1 RawdistConfig
+        The top‑level configuration deserialized from `rawdist.conf`.
+        Fields:
+            package   : PackageMeta
+            rawssg    : RawssgReqs (default: minimal)
+            files     : FilePatterns (default: include all)
+            install   : InstallConfig
+            metadata  : toml::value::Table (arbitrary extra data)
+
+        Methods:
+            validate() -> Result<(), RawdistError>
+                Checks package name, version, target_dir safety, etc.
+            load_from_dir(dir: &Path) -> Result<Self, RawdistError>
+                Reads `rawdist.conf` from a directory and validates it.
+
+    4.2.2 PackageMeta
+        Metadata describing the package.
+        Fields:
+            name            : String
+            version         : String (semver)
+            description     : Option<String>
+            authors         : Option<Vec<String>>
+            license         : Option<String>
+            repository      : Option<String>
+            homepage        : Option<String>
+            documentation   : Option<String>
+            keywords        : Option<Vec<String>>
+            categories      : Option<Vec<String>>
+            release_date    : Option<String>
+
+    4.2.3 RawssgReqs
+        Requirements for the Rawssg runtime.
+        Fields:
+            min_version   : Option<String>
+            max_version   : Option<String>
+            r#type        : String (default "theme")
+
+    4.2.4 FilePatterns
+        Inclusion and exclusion patterns (glob syntax).
+        Fields:
+            include   : Vec<String>  (default ["**/*"])
+            exclude   : Vec<String>
+
+    4.2.5 InstallConfig
+        Installation parameters.
+        Fields:
+            target_dir    : String   (default "themes/{{ package.name }}")
+            merge_config  : Option<String> (optional path relative to target)
+
+    4.2.6 InstalledPackage
+        Record of an installed package.
+        Fields:
+            name            : String
+            version         : String
+            install_path    : PathBuf (absolute)
+            config_merged   : Option<String>
+
+    4.2.7 Manifest
+        Manifest.toml (or similar) containing installed packages.
+        Fields:
+            packages : Vec<InstalledPackage>
+
+        Implements Default (empty manifest).
+
+    4.2.8 LockFile / LockEntry
+        Lock file for reproducible installations.
+        LockEntry fields: name, version, source, checksum.
+        LockFile { packages: Vec<LockEntry> }
+        Methods:
+            load(path) -> Result<LockFile, RawdistError>
+            save(path) -> Result<(), RawdistError>
+            add_package(&mut self, name, version, source, checksum)
+
+        Both Load/Save use file locks and atomic rename.
+
+    4.2.9 RawdistError
+        Comprehensive error enum with `thiserror` and `miette` derive.
+        Variants:
+            Io(std::io::Error)
+            Config(String)
+            TomlParse { path, source }
+            ChecksumMismatch { path }
+            MissingFile { path }
+            Manifest(String)
+            NotInstalled(String)
+            WalkDir(walkdir::Error)
+            InvalidInput(String)
+            Validation(String)
+            VersionMismatch { name, required, current }
+            PathTraversal(PathBuf)
+            Network(String)
+
+        Each variant includes a diagnostic code and, where appropriate,
+        a help message.
+
+    4.2.10 FileSystem (trait)
+        Trait abstracting filesystem operations for testability.
+        Methods:
+            read_to_string, read, write, create_dir_all, remove_dir_all,
+            exists, is_dir, is_file, read_dir, copy_file, rename,
+            canonicalize, walk_dir.
+
+        The standard implementation is `RealFs`, which delegates to
+        `std::fs`. Users can provide mock implementations for testing.
+
+4.3 Public functions
+
+    4.3.1 fetch_package(url: &str, dest_path: Option<&Path>) -> Result<PathBuf, RawdistError>
+        Downloads a `.rawdist` file from a URL.
+        If `dest_path` is None, saves to `$CACHE_DIR/librawdist/cache/`
+        using the filename from the URL. Returns the path to the
+        downloaded file.
+
+    4.3.2 create_package(fs: &dyn FileSystem, src_dir: &Path, output_path: &Path, config: &RawdistConfig) -> Result<(), RawdistError>
+        Creates a `.rawdist` archive from a source directory.
+        Steps:
+            1. Generate checksums of all matching files (include/exclude).
+            2. Append those files into a tar.gz archive.
+            3. Add `checksums.sha256` to the archive.
+            4. Compress and write to `output_path`.
+
+    4.3.3 extract_to_temp(fs: &dyn FileSystem, archive_path: &Path) -> Result<PathBuf, RawdistError>
+        Extracts a `.rawdist` archive into a temporary directory,
+        verifies every file against the embedded `checksums.sha256`,
+        then removes the checksum file and returns the path to the
+        extracted directory (kept alive – not auto‑deleted).
+        Aborts on checksum mismatch or missing files.
+
+    4.3.4 move_extracted(src: &Path, target: &Path) -> Result<(), RawdistError>
+        Renames the extracted directory to the final target directory.
+        Fails if target already exists.
+
+    4.3.5 install_package(archive_path: &Path, target_override: Option<&Path>, manifest_path: &Path) -> Result<(), RawdistError>
+        Full installation routine:
+            1. Validate that the file has `.rawdist` extension.
+            2. Extract to temp and verify.
+            3. Load `rawdist.conf` from the extracted directory.
+            4. Resolve target directory (override or from config template).
+            5. Reject if target already exists.
+            6. Move extracted content to target.
+            7. Update the manifest file (add/replace entry).
+        Returns `Ok(())` on success.
+
+    4.3.6 remove_package(package_name: &str, manifest_path: &Path) -> Result<(), RawdistError>
+        Removes an installed package:
+            1. Load manifest.
+            2. Find package by name (error if not found).
+            3. Remove its install directory (warns if missing).
+            4. Save updated manifest.
+
+    4.3.7 verify_package(archive_path: &Path) -> Result<(), RawdistError>
+        Verifies a `.rawdist` archive by extracting to temp and
+        validating all checksums. The temporary directory is deleted
+        afterwards. Returns Ok if all checks pass.
+
+4.4 Checksum utilities
+    Functions in `librawdist::checksum`:
+
+        hash_file(fs: &dyn FileSystem, path: &Path) -> Result<String, RawdistError>
+            Reads a file and returns its SHA256 hex string.
+
+        generate_checksums(fs, root, patterns) -> Result<BTreeMap<PathBuf, String>>
+            Walks root, filters files, and hashes them. Ensures
+            `rawdist.conf` is included.
+
+        format_checksums(&BTreeMap) -> String
+            Produces the `hash  path` format used in `checksums.sha256`.
+
+        parse_checksums(content: &str) -> Result<BTreeMap<PathBuf, String>>
+            Parses the checksum file. Accepts both two‑space and single‑space
+            separators.
+
+4.5 Filter utilities
+    librawdist::filter::is_included(rel_path, includes, excludes) -> bool
+        Returns true if the relative path matches any include pattern
+        (glob) and is not excluded by any exclude pattern. Exclude takes
+        priority.
+
+4.6 Integration example
+    A complete workflow: download, verify, install, then remove.
+
+        use librawdist::{
+            fetch_package,
+            verify_package,
+            install_package,
+            remove_package,
+            RawdistError,
+        };
+        use std::path::Path;
+
+        fn main() -> Result<(), RawdistError> {
+            let manifest_path = Path::new("rawdist-manifest.toml");
+
+            // 1. Download
+            let archive = fetch_package(
+                "https://example.org/packages/my-theme.rawdist",
+                None,
+            )?;
+
+            // 2. Verify (optional, install also verifies)
+            verify_package(&archive)?;
+
+            // 3. Install
+            install_package(&archive, None, manifest_path)?;
+
+            // 4. Later, remove
+            remove_package("my-theme", manifest_path)?;
+
+            Ok(())
+        }
+
+
+5. CONFIGURATION (rawdist.conf)
+-------------------------------
+
+5.1 Format
+    A file named `rawdist.conf` placed in the root of the package source.
+    It must be valid TOML. Example:
+
+        [package]
+        name = "my-theme"
+        version = "1.0.0"
+        description = "A beautiful theme"
+        authors = ["Author Name <email@example.com>"]
+        license = "MIT"
+        repository = "https://github.com/user/repo"
+
+        [rawssg]
+        min_version = "0.5.0"
+        type = "theme"
+
+        [files]
+        include = ["layouts/**/*", "assets/**/*", "rawdist.conf"]
+        exclude = ["*.log", "tmp/**"]
+
+        [install]
+        target_dir = "themes/{{ package.name }}"
+        merge_config = "user.conf"
+
+        [metadata]
+        custom_key = "value"
+
+5.2 Fields detail
+    - package.name          : must be alphanumeric, '-' or '_' only.
+    - package.version       : must be valid semver (e.g. "1.2.3").
+    - rawssg.min_version    : optional, minimum Rawssg version.
+    - rawssg.max_version    : optional, maximum compatible version.
+    - rawssg.type           : package type (default "theme").
+    - files.include         : list of glob patterns to include. Default `["**/*"]`.
+    - files.exclude         : list of glob patterns to exclude. Exclude overrides include.
+    - install.target_dir    : relative path, may contain `{{ package.name }}` placeholder.
+    - install.merge_config  : optional file to merge into existing configs.
+    - metadata              : free‑form TOML table.
+
+5.3 Validation rules
+    The method `RawdistConfig::validate()` enforces:
+        - package name is not empty and only contains allowed characters.
+        - version parses as a valid semver.
+        - target_dir does not start with `/` and does not contain `..`.
+        - files.include is not empty.
+        - merge_config (if present) is relative and safe.
+    Violations result in `RawdistError::Validation` with a descriptive message.
+
+
+6. PACKAGE FORMAT (.rawdist)
+----------------------------
+
+6.1 Internal structure
+    A `.rawdist` file is a gzip‑compressed tar archive containing:
+        - All files matching the include/exclude patterns,
+          preserving their relative paths from the source root.
+        - A file named `checksums.sha256` at the root of the archive.
+
+    The checksums file contains the SHA256 hash and path of every file
+    in the archive, in the format `hash  path\n`. It is generated
+    automatically by `create_package` and used by `extract_to_temp`
+    to verify integrity.
+
+6.2 checksums.sha256 format
+    One entry per line, hash and relative path separated by two spaces.
+    Example:
+
+        e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  rawdist.conf
+        8f2e5...  layouts/default.html
+
+    Both two‑space and single‑space separators are accepted during parsing.
+
+6.3 Security: path traversal prevention
+    During extraction, every entry path is checked for `..` components.
+    Additionally, the canonical destination of each file is compared
+    against the canonical extraction root. Any attempt to write outside
+    the root triggers `RawdistError::PathTraversal`.
+
+
+7. MANIFEST AND LOCK FILES
+--------------------------
+
+7.1 Manifest (installed packages)
+    A TOML file (typically `rawdist-manifest.toml`) tracking currently
+    installed packages. Maintained by `install_package` and `remove_package`.
+
+    Structure:
+        [[packages]]
+        name = "my-theme"
+        version = "1.0.0"
+        install_path = "/absolute/path/to/themes/my-theme"
+        config_merged = "user.conf"
+
+    The manifest is read with file locking (shared) and written atomically
+    (exclusive lock, tmp file, rename). If the file does not exist, an
+    empty manifest is assumed.
+
+7.2 Lock file (pinned versions)
+    Optional lock file (e.g., `rawdist.lock`) for reproducible environments.
+    Each entry records:
+        name, version, source URL, checksum (SHA256 of the .rawdist file).
+
+    Structure:
+        [[packages]]
+        name = "my-theme"
+        version = "1.0.0"
+        source = "https://.../my-theme.rawdist"
+        checksum = "abc123..."
+
+    Loaded/saved via `lock::LockFile::load` and `save`, with the same
+    atomic‑write and locking pattern. The method `add_package` replaces
+    an existing entry with the same name.
+
+
+8. ERROR HANDLING
+-----------------
+
+All fallible functions return `Result<T, RawdistError>`. The error enum
+provides rich diagnostics when used with `miette` (e.g., in a CLI):
+
+    Error: Checksum verification failed for file layouts/broken.html
+      Diagnostic code: librawdist::checksum_mismatch
+      Help: The package may be corrupted or tampered. Download again from official source.
+
+When using the library programmatically, you can match on the error
+variants:
+
+    match err {
+        RawdistError::ChecksumMismatch { path } => { ... },
+        RawdistError::MissingFile { path } => { ... },
+        ...
+    }
+
+I/O and walkdir errors are transparently wrapped. Network errors are
+captured as `RawdistError::Network`.
+
+
+9. EXAMPLES
+-----------
+
+9.1 Building a package
+    use librawdist::fs::RealFs;
+    use librawdist::types::RawdistConfig;
+    use librawdist::create_package;
+
+    fn main() -> Result<(), librawdist::RawdistError> {
+        let fs = RealFs;
+        let src = std::path::Path::new("my_theme");
+        let config = RawdistConfig::load_from_dir(src)?;
+        create_package(&fs, src, std::path::Path::new("my_theme.rawdist"), &config)?;
+        Ok(())
+    }
+
+9.2 Installing a package
+    use librawdist::{fetch_package, install_package};
+
+    fn main() -> Result<(), librawdist::RawdistError> {
+        let archive = fetch_package("https://example.org/packages/my_theme.rawdist", None)?;
+        install_package(&archive, None, std::path::Path::new("rawdist-manifest.toml"))?;
+        Ok(())
+    }
+
+9.3 Removing a package
+    use librawdist::remove_package;
+
+    fn main() -> Result<(), librawdist::RawdistError> {
+        remove_package("my_theme", std::path::Path::new("rawdist-manifest.toml"))?;
+        Ok(())
+    }
+
+9.4 Verifying a package
+    use librawdist::verify_package;
+
+    fn main() -> Result<(), librawdist::RawdistError> {
+        verify_package(std::path::Path::new("downloaded.rawdist"))?;
+        println!("Package is intact.");
+        Ok(())
+    }
+
+
+10. CONTRIBUTING
+----------------
+
+Contributions are welcome! Please open issues or pull requests on the
+GitHub repository. Before submitting:
+    - Ensure the code compiles without warnings.
+    - Existing tests pass (cargo test).
+    - New functionality should include unit tests (using mock filesystem
+      implementations) and documentation updates.
+
+Contact the maintainer via the repository's issue tracker.
+
+
+11. LICENSE
+-----------
+
+librawdist is free software licensed under the GNU General Public License
+version 3.0 (GPL-3.0).
+
+    Copyright (C) 2025 mroczect
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this library.  If not, see <https://www.gnu.org/licenses/>.
