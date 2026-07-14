@@ -1,64 +1,78 @@
 mod common;
-use librawdist::fetch::{fetch_package, HttpClient};
+use common::{MockFs, MockHttp};
 use librawdist::RawdistError;
+use librawdist::fetch::fetch_package;
+use librawdist::fs::RealFs;
 use std::path::Path;
 use tempfile::TempDir;
 
-struct MockHttp {
-    response: Result<Vec<u8>, String>,
-}
-
-impl HttpClient for MockHttp {
-    fn get(&self, _url: &str) -> Result<Vec<u8>, RawdistError> {
-        match &self.response {
-            Ok(data) => Ok(data.clone()),
-            Err(msg) => Err(RawdistError::Network(msg.clone())),
-        }
-    }
-}
-
 #[test]
-fn test_fetch_success_to_dest() {
+fn fetch_success_with_dest() {
     let tmp = TempDir::new().unwrap();
     let dest = tmp.path().join("pkg.rawdist");
-    let mock = MockHttp {
+    let http = MockHttp {
         response: Ok(b"filedata".to_vec()),
     };
-    let path = fetch_package(&mock, "http://example.com/pkg.rawdist", Some(&dest)).unwrap();
+    let fs = RealFs;
+    let path = fetch_package(&fs, &http, "http://example.com/pkg.rawdist", Some(&dest)).unwrap();
     assert_eq!(path, dest);
     assert_eq!(std::fs::read_to_string(&dest).unwrap(), "filedata");
 }
 
 #[test]
-fn test_fetch_success_to_cache() {
+fn fetch_success_to_cache() {
     let tmp = TempDir::new().unwrap();
-    // override cache dir
-    std::env::set_var("XDG_CACHE_HOME", tmp.path());
-    let mock = MockHttp {
+    unsafe {
+        std::env::set_var("XDG_CACHE_HOME", tmp.path());
+    }
+    let http = MockHttp {
         response: Ok(b"data".to_vec()),
     };
-    let path = fetch_package(&mock, "http://x.com/pkg.rawdist", None).unwrap();
+    let fs = RealFs;
+    let path = fetch_package(&fs, &http, "http://x.com/pkg.rawdist", None).unwrap();
     assert!(path.starts_with(tmp.path()));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "data");
-    std::env::remove_var("XDG_CACHE_HOME");
+    unsafe {
+        std::env::remove_var("XDG_CACHE_HOME");
+    }
 }
 
 #[test]
-fn test_fetch_network_error() {
-    let mock = MockHttp {
-        response: Err("fail".to_string()),
+fn fetch_network_error() {
+    let http = MockHttp {
+        response: Err("fail".into()),
     };
-    let err = fetch_package(&mock, "http://x", Some(Path::new("/tmp/x"))).unwrap_err();
+    let fs = RealFs;
+    let err = fetch_package(&fs, &http, "http://x", Some(Path::new("/tmp/x"))).unwrap_err();
     assert!(matches!(err, RawdistError::Network(_)));
 }
 
 #[test]
-fn test_fetch_write_error() {
-    let mock = MockHttp {
+fn fetch_write_error() {
+    let http = MockHttp {
         response: Ok(b"x".to_vec()),
     };
-    // Tulis ke path yang tidak mungkin (direktori tidak ada)
-    let err =
-        fetch_package(&mock, "http://x", Some(Path::new("/nonexistent_dir_/file"))).unwrap_err();
+    let fs = RealFs;
+    let err = fetch_package(
+        &fs,
+        &http,
+        "http://x",
+        Some(Path::new("/nonexistent_dir_/file")),
+    )
+    .unwrap_err();
+    assert!(matches!(err, RawdistError::Io(_)));
+}
+
+#[test]
+fn fetch_create_dir_error() {
+    let mut mock = MockFs::new();
+    mock.create_dir_error = Some(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "denied",
+    ));
+    let http = MockHttp {
+        response: Ok(b"data".to_vec()),
+    };
+    let err = fetch_package(&mock, &http, "http://x", None).unwrap_err();
     assert!(matches!(err, RawdistError::Io(_)));
 }
