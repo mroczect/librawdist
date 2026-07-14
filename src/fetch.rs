@@ -1,13 +1,14 @@
 use crate::error::RawdistError;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 pub fn fetch_package(url: &str, dest_path: Option<&Path>) -> Result<PathBuf, RawdistError> {
     let response = ureq::get(url)
         .call()
         .map_err(|e| RawdistError::Network(e.to_string()))?;
-    let mut body = Vec::new();
-    response.into_body().read_to_end(&mut body)?;
+    let body = response
+        .into_body()
+        .read_to_vec()
+        .map_err(|e| RawdistError::Network(e.to_string()))?;
 
     let dest = if let Some(p) = dest_path {
         p.to_path_buf()

@@ -5,7 +5,6 @@ use crate::types::RawdistConfig;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use tar::{Archive, Builder};
 
@@ -96,7 +95,7 @@ pub fn extract_to_temp(fs: &dyn FileSystem, archive_path: &Path) -> Result<PathB
     }
 
     std::fs::remove_file(&checksum_file)?;
-    let persistent = temp_dir.keep()?;
+    let persistent = temp_dir.keep();
     Ok(persistent)
 }
 
