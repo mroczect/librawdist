@@ -1,0 +1,115 @@
+===============================================================================
+                               CHANGELOG
+===============================================================================
+
+[0.4.0] - 2026-07-14
+--------------------
+Added:
+  - PackageManager high-level facade for package management
+  - ArchiveTooLarge error variant for package size validation
+  - remove_file and metadata methods to FileSystem trait
+  - Re-export PackageManager and update public API
+  - Required rawssg/files/install fields, edition field, and resolve_target_dir
+
+Changed:
+  - FileSystem trait integration throughout: package creation, extraction,
+    manifest, lock file, install/remove, fetch
+  - Accept FileSystem and return optional extracted directory in extraction
+    functions
+  - Enforce file type and size checks during package creation/extraction
+
+Documentation:
+  - Updated README for v0.4.0 with PackageManager and edition 2024 details
+
+Build & CI:
+  - Bump version to 0.4.0
+  - Update lockfile
+  - Simplify CI workflow: remove clippy and format jobs
+
+Testing:
+  - Added comprehensive test suite: PackageManager, verify, types, package ops,
+    manifest, lock file, install/remove, filesystem, filter, fetch, checksum,
+    MockFs, MockHttp
+
+
+[0.3.2] - 2026-07-14
+--------------------
+Added:
+  - Required fields (rawssg, files, install) with constructor for configuration
+  - Re-export FileSystem and RealFs
+  - remove_file method to FileSystem trait and RealFs implementation
+
+Changed:
+  - Refactored to accept FileSystem throughout: verify_package, package
+    creation/extraction/move, manifest load/save, lock file load/save,
+    install_package, remove_package, fetch_package
+
+Documentation:
+  - Bump version to 0.3.2 in README
+
+Build & CI:
+  - Bump version to 0.3.2
+  - Update lockfile
+
+
+[0.3.1] - 2026-07-14
+--------------------
+Changed:
+  - Bump Rust edition to 2024
+
+Documentation:
+  - Update version and edition in README
+
+Build & CI:
+  - Bump version to 0.3.1
+  - Update lockfile
+  - Update GitHub Actions: checkout v7, cache v6
+
+
+[0.3.0] - 2026-07-14
+--------------------
+Added:
+  - HttpClient trait and UreqClient implementation for HTTP fetching
+  - Re-export HttpClient and UreqClient
+  - Comprehensive CI workflow
+
+Testing:
+  - Added extensive test suite covering: verify, types, package
+    creation/extraction, manifest, lock file, install/remove, filesystem,
+    filter, fetch, checksum
+  - MockFs for unit testing
+
+Documentation:
+  - Update version to 0.3.0 in README
+
+Build & CI:
+  - Bump version to 0.3.0
+
+
+[0.2.0] - 2026-07-14
+--------------------
+Added:
+  - Initial library implementation: package management, manifest handling, file
+    filtering, checksum generation/verification, abstract filesystem (RealFs),
+    package fetching, lock file management, configuration types
+  - Package verification, creation, extraction, relocation, installation, removal
+  - Error types with miette diagnostics
+  - Include/exclude file filtering with glob
+
+Changed:
+  - Renamed LibrawdistError to RawdistError, LibrawdistConfig to RawdistConfig
+    with load_from_dir method
+  - Various refactors for FileSystem injection and error handling
+  - Updated dependencies
+
+Fixed:
+  - Build errors: fix temp_dir.keep() usage and ureq read_to_vec
+
+Documentation:
+  - Comprehensive README with API docs, examples, config reference
+  - Added GPL-3.0 license
+  - Project status documentation
+
+Build & CI:
+  - Added Cargo.toml, Cargo.lock
+  - Bump version to 0.2.0
