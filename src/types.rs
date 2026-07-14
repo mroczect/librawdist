@@ -6,17 +6,29 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawdistConfig {
     pub package: PackageMeta,
-    #[serde(default)]
     pub rawssg: RawssgReqs,
-    #[serde(default)]
     pub files: FilePatterns,
-    #[serde(default)]
     pub install: InstallConfig,
     #[serde(default)]
     pub metadata: toml::value::Table,
 }
 
 impl RawdistConfig {
+    pub fn new(
+        package: PackageMeta,
+        rawssg: RawssgReqs,
+        files: FilePatterns,
+        install: InstallConfig,
+    ) -> Self {
+        Self {
+            package,
+            rawssg,
+            files,
+            install,
+            metadata: toml::value::Table::new(),
+        }
+    }
+
     pub fn validate(&self) -> Result<(), crate::error::RawdistError> {
         use crate::error::RawdistError;
 
@@ -62,13 +74,12 @@ impl RawdistConfig {
         Ok(())
     }
 
-    /// Memuat konfigurasi dari direktori yang berisi `rawdist.conf`.
-    pub fn load_from_dir(dir: &std::path::Path) -> Result<Self, RawdistError> {
+    pub fn load_from_dir(fs: &dyn crate::fs::FileSystem, dir: &std::path::Path) -> Result<Self, RawdistError> {
         let config_path = dir.join("rawdist.conf");
-        if !config_path.exists() {
+        if !fs.exists(&config_path) {
             return Err(RawdistError::MissingFile { path: config_path });
         }
-        let content = std::fs::read_to_string(&config_path)?;
+        let content = fs.read_to_string(&config_path)?;
         let config: Self = toml::from_str(&content).map_err(|e| RawdistError::TomlParse {
             path: config_path,
             source: e,
@@ -78,6 +89,7 @@ impl RawdistConfig {
     }
 }
 
+// PackageMeta tidak berubah
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageMeta {
     pub name: String,
@@ -95,68 +107,23 @@ pub struct PackageMeta {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawssgReqs {
-    #[serde(default)]
     pub min_version: Option<String>,
-    #[serde(default)]
     pub max_version: Option<String>,
-    #[serde(default = "default_package_type")]
-    pub r#type: String,
-}
-
-impl Default for RawssgReqs {
-    fn default() -> Self {
-        Self {
-            min_version: None,
-            max_version: None,
-            r#type: default_package_type(),
-        }
-    }
-}
-
-fn default_package_type() -> String {
-    "theme".to_string()
+    pub r#type: String,   // wajib diisi, tidak ada default
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePatterns {
-    #[serde(default = "default_include")]
-    pub include: Vec<String>,
+    pub include: Vec<String>,   // wajib, tidak ada default
     #[serde(default)]
     pub exclude: Vec<String>,
 }
 
-impl Default for FilePatterns {
-    fn default() -> Self {
-        Self {
-            include: default_include(),
-            exclude: Vec::new(),
-        }
-    }
-}
-
-fn default_include() -> Vec<String> {
-    vec!["**/*".to_string()]
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallConfig {
-    #[serde(default = "default_target_dir")]
-    pub target_dir: String,
+    pub target_dir: String,     // wajib
     #[serde(default)]
     pub merge_config: Option<String>,
-}
-
-impl Default for InstallConfig {
-    fn default() -> Self {
-        Self {
-            target_dir: default_target_dir(),
-            merge_config: None,
-        }
-    }
-}
-
-fn default_target_dir() -> String {
-    "themes/{{ package.name }}".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
