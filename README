@@ -5,7 +5,7 @@ librawdist - A Rust library for managing packages in the Rawssg ecosystem.
 Create, fetch, verify, install, and remove `.rawdist` archives with
 built‑in integrity checks and atomic manifest handling.
 
-Version  : 0.3.1
+Version  : 0.3.2
 License  : GPL-3.0
 Website  : https://github.com/mroczect/librawdist
 Rust     : Edition 2024
@@ -94,7 +94,7 @@ TABLE OF CONTENTS
 
     Or specify a tag:
 
-        librawdist = { git = "https://github.com/mroczect/librawdist.git", tag = "v0.3.1" }
+        librawdist = { git = "https://github.com/mroczect/librawdist.git", tag = "v0.3.2" }
 
 2.2 Build from source
     Requirements: Rust (edition 2021+), Git.
