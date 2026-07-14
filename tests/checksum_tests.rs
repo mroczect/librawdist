@@ -1,0 +1,133 @@
+mod common;
+use common::MockFs;
+use librawdist::checksum;
+use librawdist::types::FilePatterns;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+#[test]
+fn test_hash_file_success() {
+    let mut mock = MockFs::new();
+    mock.add_file(Path::new("/test.txt"), b"hello");
+    let hash = checksum::hash_file(&mock, Path::new("/test.txt")).unwrap();
+    assert_eq!(hash.len(), 64);
+    assert_eq!(
+        hash,
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    );
+}
+
+#[test]
+fn test_hash_file_io_error() {
+    let mut mock = MockFs::new();
+    mock.read_error = Some(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"));
+    let err = checksum::hash_file(&mock, Path::new("/x")).unwrap_err();
+    assert!(matches!(err, librawdist::RawdistError::Io(_)));
+}
+
+#[test]
+fn test_generate_checksums_missing_rawdist_conf() {
+    let mut mock = MockFs::new();
+    mock.add_file(Path::new("/other.txt"), b"data");
+    let patterns = FilePatterns::default();
+    let err = checksum::generate_checksums(&mock, Path::new("/"), &patterns).unwrap_err();
+    assert!(matches!(err, librawdist::RawdistError::MissingFile { .. }));
+}
+
+#[test]
+fn test_generate_checksums_includes_rawdist_conf_automatically() {
+    let mut mock = MockFs::new();
+    mock.add_file(Path::new("/rawdist.conf"), b"conf");
+    mock.add_file(Path::new("/theme.css"), b"css");
+    let patterns = FilePatterns {
+        include: vec!["*.css".to_string()],
+        exclude: vec![],
+    };
+    let map = checksum::generate_checksums(&mock, Path::new("/"), &patterns).unwrap();
+    assert!(map.contains_key(Path::new("rawdist.conf")));
+    assert!(map.contains_key(Path::new("theme.css")));
+    assert_eq!(map.len(), 2);
+}
+
+#[test]
+fn test_generate_checksums_exclude_pattern() {
+    let mut mock = MockFs::new();
+    mock.add_file(Path::new("/rawdist.conf"), b"conf");
+    mock.add_file(Path::new("/include.css"), b"css");
+    mock.add_file(Path::new("/exclude.js"), b"js");
+    let patterns = FilePatterns {
+        include: vec!["*".to_string()],
+        exclude: vec!["*.js".to_string()],
+    };
+    let map = checksum::generate_checksums(&mock, Path::new("/"), &patterns).unwrap();
+    assert!(map.contains_key(Path::new("rawdist.conf")));
+    assert!(map.contains_key(Path::new("include.css")));
+    assert!(!map.contains_key(Path::new("exclude.js")));
+}
+
+#[test]
+fn test_generate_checksums_walk_error() {
+    let mut mock = MockFs::new();
+    mock.walk_error = Some(std::io::Error::new(std::io::ErrorKind::Other, "walk fail"));
+    let err =
+        checksum::generate_checksums(&mock, Path::new("/"), &FilePatterns::default()).unwrap_err();
+    // walk_dir error is an io::Error, which gets converted to RawdistError::Io
+    assert!(matches!(err, librawdist::RawdistError::Io(_)));
+}
+
+#[test]
+fn test_format_checksums() {
+    let mut map = BTreeMap::new();
+    map.insert(PathBuf::from("a.txt"), "hash_a".to_string());
+    map.insert(PathBuf::from("b.txt"), "hash_b".to_string());
+    let out = checksum::format_checksums(&map);
+    assert_eq!(out, "hash_a  a.txt\nhash_b  b.txt\n");
+}
+
+#[test]
+fn test_format_checksums_empty() {
+    let map = BTreeMap::new();
+    let out = checksum::format_checksums(&map);
+    assert_eq!(out, "");
+}
+
+#[test]
+fn test_parse_checksums_standard() {
+    let content = "abc123  file.txt\ndef456  dir/file.log\n";
+    let map = checksum::parse_checksums(content).unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(map.get(Path::new("file.txt")).unwrap(), "abc123");
+    assert_eq!(map.get(Path::new("dir/file.log")).unwrap(), "def456");
+}
+
+#[test]
+fn test_parse_checksums_fallback_split() {
+    let content = "hash1 path1\nhash2  path2"; // second line uses double space, but first does not
+    let map = checksum::parse_checksums(content).unwrap();
+    assert_eq!(map.get(Path::new("path1")).unwrap(), "hash1");
+    assert_eq!(map.get(Path::new("path2")).unwrap(), "hash2");
+}
+
+#[test]
+fn test_parse_checksums_empty_lines() {
+    let content = "hash  path\n\nhash2  path2\n";
+    let map = checksum::parse_checksums(content).unwrap();
+    assert_eq!(map.len(), 2);
+}
+
+#[test]
+fn test_parse_checksums_whitespace_only() {
+    // A line that is only whitespace is trimmed to empty and skipped,
+    // so the whole input results in an empty map, not an error.
+    let content = "   \n  ";
+    let map = checksum::parse_checksums(content).unwrap();
+    assert!(map.is_empty());
+}
+
+#[test]
+fn test_parse_checksums_single_word_no_path() {
+    // Input with a single word yields an empty path
+    let content = "hashonly";
+    let map = checksum::parse_checksums(content).unwrap();
+    assert_eq!(map.get(Path::new("")).unwrap(), "hashonly");
+}
