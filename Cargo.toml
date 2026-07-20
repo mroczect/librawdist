@@ -2,9 +2,17 @@
 name = "librawdist"
 version = "0.5.0"
 edition = "2024"
+
+authors = ["mroczect"] 
 description = "library package manager for the rawssg ecosystem"
 license = "GPL-3.0"
 repository = "https://github.com/mroczect/librawdist"
+homepage = "https://github.com/mroczect/librawdist"
+documentation = "https://docs.rs/librawdist"
+readme = "README.md"
+keywords = ["package-manager", "rawssg", "archive",]
+categories = ["filesystem", "compression", "development-tools"]
+exclude = ["/target", "/.git", "/.github", "/benches", "/examples", "/tests"]
 
 [lib]
 path = "src/lib.rs"

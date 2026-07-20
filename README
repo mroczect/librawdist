@@ -729,20 +729,3 @@ GitHub repository. Before submitting:
       and HTTP implementations) and documentation updates.
 
 Contact the maintainer via the repository's issue tracker.
-
-
-11. LICENSE
------------
-
-librawdist is free software licensed under the GNU General Public License
-version 3.0 (GPL-3.0).
-
-    Copyright (C) 2025 mroczect
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <https://www.gnu.org/licenses/>.
